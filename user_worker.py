@@ -139,7 +139,7 @@ async def main_worker():
     db_pool = await asyncpg.create_pool(dsn=DATABASE_URL)
     await init_db(db_pool)
     user_client = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH)
-    bot_client = Client("bot_sender_instance", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
+    bot_client = Client("bot_sender_instance", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH, in_memory=True)
     async with user_client, bot_client:
         monitor_task = monitor_gifts_loop(user_client, bot_client, db_pool)
         await asyncio.gather(monitor_task)
