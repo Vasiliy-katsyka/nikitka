@@ -1,5 +1,5 @@
 # Основная библиотека для работы с Telegram API
-pyrogram[asyncio]
+kurigram[asyncio]
 
 # Асинхронный драйвер для PostgreSQL (для Neon.tech)
 asyncpg
