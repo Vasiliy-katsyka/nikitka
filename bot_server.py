@@ -1,12 +1,12 @@
 # ==========================================
-#  bot_server.py (v2 - Kurigram fix)
+#  bot_server.py (v3 - aiohttp fix)
 # ==========================================
 
 import asyncio
 import asyncpg
 import os
 import uvloop
-from kurigram import Client, filters, types # <--- ИЗМЕНЕНИЕ
+from kurigram import Client, filters, types
 from aiohttp import web
 
 # --- Конфигурация (без изменений) ---
@@ -37,8 +37,7 @@ async def get_all_users(pool):
     async with pool.acquire() as conn:
         return await conn.fetch('SELECT user_id, star_balance FROM telegram_users')
 
-# --- Обработчики команд бота (без изменений, кроме импорта types) ---
-
+# --- Обработчики команд бота (без изменений) ---
 @bot.on_message(filters.command("start"))
 async def start_handler(_, message: types.Message):
     await message.reply("Бот для мониторинга подарков активен. Используйте /status для проверки.")
@@ -97,8 +96,9 @@ async def conversation_handler(client, message: types.Message):
             await message.reply("Неверный баланс. Пожалуйста, отправьте число.")
             user_conversations[message.from_user.id] = state
 
-# --- Логика веб-сервера (без изменений) ---
+# --- Логика веб-сервера ---
 
+# Эти функции ДОЛЖНЫ быть асинхронными (async def), так как aiohttp их ждёт (await)
 async def on_startup(app):
     if not all([BOT_TOKEN, SERVER_URL]):
         print("Ошибка: BOT_TOKEN или SERVER_URL не установлены. Веб-сервис не может запуститься.")
@@ -108,7 +108,8 @@ async def on_startup(app):
     bot.db_pool = app['db_pool']
     await bot.start()
     try:
-        await bot.set_webhook(url=WEBHOOK_URL, allowed_updates=[]) # allowed_updates=[] - чтобы не получать лишние апдейты
+        # Устанавливаем вебхук без ожидания лишних апдейтов
+        await bot.set_webhook(url=WEBHOOK_URL, allowed_updates=[])
         print(f"Вебхук успешно установлен по адресу: {WEBHOOK_URL}")
     except Exception as e:
         print(f"Ошибка установки вебхука: {e}")
@@ -117,23 +118,37 @@ async def on_shutdown(app):
     print("Остановка веб-сервиса бота...")
     if bot.is_initialized:
         await bot.stop()
-    await app['db_pool'].close()
+    if 'db_pool' in app and app['db_pool']:
+        await app['db_pool'].close()
 
 async def webhook_handler(request):
     try:
-        update_json = await request.json()
-        await bot.feed_update(update_json)
+        # Получаем апдейт от Telegram
+        update = await request.json()
+        # Создаём задачу для обработки апдейта в фоне, чтобы не блокировать ответ Telegram
+        asyncio.create_task(bot.feed_update(update))
     except Exception as e:
-        print(f"Ошибка обработки вебхука: {e}")
+        print(f"Ошибка в webhook_handler: {e}")
+    # Немедленно отвечаем Telegram, что всё хорошо
     return web.Response(status=200)
 
-async def main_bot_server():
+# ==========================================
+#  >>> ИЗМЕНЕНИЯ ЗДЕСЬ <<<
+# ==========================================
+# Главная функция теперь СИНХРОННАЯ (def, а не async def)
+def main_bot_server():
+    # Устанавливаем uvloop перед созданием приложения
     uvloop.install()
+
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, webhook_handler)
+    
+    # Регистрируем асинхронные функции для старта и остановки
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
+    
+    # Этот вызов сам запускает и управляет циклом событий. asyncio.run() здесь не нужен.
     web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
-    asyncio.run(main_bot_server())
+    main_bot_server() # <-- Простой, синхронный вызов
