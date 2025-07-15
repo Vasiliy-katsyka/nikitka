@@ -1,5 +1,5 @@
 # ==========================================
-#  Blueprint для Telegram Autobuy Bot
+#  Blueprint для Telegram Autobuy Bot (v3 - Corrected)
 #  С использованием внешней базы данных Neon.tech
 # ==========================================
 
@@ -15,19 +15,17 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python bot_server.py"
     envVars:
-      - key: DATABASE_URL          # Будет взят из панели управления
+      # Все переменные будут взяты из панели управления Render
+      # Обратите внимание, что SERVER_URL здесь больше не нужен.
+      # Мы будем использовать RENDER_EXTERNAL_URL, которую Render добавит автоматически.
+      - key: DATABASE_URL
         sync: false
-      - key: BOT_TOKEN             # Будет взят из панели управления
+      - key: BOT_TOKEN
         sync: false
-      - key: ADMIN_USER_ID         # Будет взят из панели управления
+      - key: ADMIN_USER_ID
         sync: false
-      - key: NOTIFICATION_CHANNEL_ID # Будет взят из панели управления
+      - key: NOTIFICATION_CHANNEL_ID
         sync: false
-      - key: SERVER_URL            # Автоматически предоставляется Render
-        fromService:
-          type: web
-          name: autobuy-bot-server
-          property: url
 
   # ------------------------------------------
   #  Сервис 2: Фоновый воркер для Клиент-аккаунта
@@ -40,17 +38,18 @@ services:
     buildCommand: "pip install -r requirements.txt"
     startCommand: "python user_worker.py"
     envVars:
-      - key: DATABASE_URL          # Будет взят из панели управления
+      # Переменные для воркера остаются без изменений
+      - key: DATABASE_URL
         sync: false
-      - key: API_ID                # Будет взят из панели управления
+      - key: API_ID
         sync: false
-      - key: API_HASH              # Будет взят из панели управления
+      - key: API_HASH
         sync: false
-      - key: SESSION_NAME          # Будет взят из панели управления
+      - key: SESSION_NAME
         sync: false
-      - key: BOT_TOKEN             # Будет взят из панели управления
+      - key: BOT_TOKEN
         sync: false
-      - key: ADMIN_USER_ID         # Будет взят из панели управления
+      - key: ADMIN_USER_ID
         sync: false
-      - key: NOTIFICATION_CHANNEL_ID # Будет взят из панели управления
+      - key: NOTIFICATION_CHANNEL_ID
         sync: false
