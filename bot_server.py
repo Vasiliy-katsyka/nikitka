@@ -21,7 +21,7 @@ WEBHOOK_PATH = f"/{BOT_TOKEN}"
 WEBHOOK_URL = f"{SERVER_URL}{WEBHOOK_PATH}"
 
 # --- Объекты ---
-bot = Client("gift_bot_instance", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+bot = Client("gift_bot_instance", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN, in_memory=True)
 user_conversations = {}
 
 # --- Функции для работы с БД ---
