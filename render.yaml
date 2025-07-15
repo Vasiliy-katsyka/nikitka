@@ -1,1 +1,56 @@
+# ==========================================
+#  Blueprint для Telegram Autobuy Bot
+#  С использованием внешней базы данных Neon.tech
+# ==========================================
 
+services:
+  # ------------------------------------------
+  #  Сервис 1: Веб-сервис для Telegram Бота
+  # ------------------------------------------
+  - type: web
+    name: autobuy-bot-server
+    env: python
+    region: frankfurt 
+    plan: free 
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot_server.py"
+    envVars:
+      - key: DATABASE_URL          # Будет взят из панели управления
+        sync: false
+      - key: BOT_TOKEN             # Будет взят из панели управления
+        sync: false
+      - key: ADMIN_USER_ID         # Будет взят из панели управления
+        sync: false
+      - key: NOTIFICATION_CHANNEL_ID # Будет взят из панели управления
+        sync: false
+      - key: SERVER_URL            # Автоматически предоставляется Render
+        fromService:
+          type: web
+          name: autobuy-bot-server
+          property: url
+
+  # ------------------------------------------
+  #  Сервис 2: Фоновый воркер для Клиент-аккаунта
+  # ------------------------------------------
+  - type: worker
+    name: user-gift-monitor
+    env: python
+    region: frankfurt
+    plan: starter # Важно: для воркера 24/7 нужен платный план
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python user_worker.py"
+    envVars:
+      - key: DATABASE_URL          # Будет взят из панели управления
+        sync: false
+      - key: API_ID                # Будет взят из панели управления
+        sync: false
+      - key: API_HASH              # Будет взят из панели управления
+        sync: false
+      - key: SESSION_NAME          # Будет взят из панели управления
+        sync: false
+      - key: BOT_TOKEN             # Будет взят из панели управления
+        sync: false
+      - key: ADMIN_USER_ID         # Будет взят из панели управления
+        sync: false
+      - key: NOTIFICATION_CHANNEL_ID # Будет взят из панели управления
+        sync: false
