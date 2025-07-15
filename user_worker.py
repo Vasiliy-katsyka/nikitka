@@ -1,15 +1,16 @@
 # ==========================================
-#  user_worker.py (v2 - Kurigram fix)
+#  user_worker.py (v3 - Final Pyrogram fix)
 # ==========================================
 
 import asyncio
 import asyncpg
 import time
 import os
-from kurigram import Client  # <--- ИЗМЕНЕНИЕ
+from pyrogram import Client
+from pyrogram.types import Gift
 from typing import List, Dict
 
-# --- Конфигурация из переменных окружения (без изменений) ---
+# --- Конфигурация из переменных окружения ---
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 SESSION_NAME = os.getenv("SESSION_NAME", "my_telegram_session")
@@ -17,7 +18,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 NOTIFICATION_CHANNEL_ID = int(os.getenv("NOTIFICATION_CHANNEL_ID", 0))
 
-# --- Функции для работы с базой данных (без изменений) ---
+# --- Функции для работы с базой данных ---
 async def init_db(pool):
     async with pool.acquire() as conn:
         await conn.execute('''CREATE TABLE IF NOT EXISTS known_gifts (gift_id BIGINT PRIMARY KEY, star_count INTEGER NOT NULL)''')
@@ -33,7 +34,7 @@ async def get_known_gift_ids(pool) -> List[int]:
         rows = await conn.fetch('SELECT gift_id FROM known_gifts')
         return [row['gift_id'] for row in rows]
 
-async def add_new_gifts_to_db(pool, gifts: List['kurigram.types.Gift']): # <--- ИЗМЕНЕНИЕ
+async def add_new_gifts_to_db(pool, gifts: List[Gift]):
     if not gifts: return
     async with pool.acquire() as conn:
         await conn.executemany('INSERT INTO known_gifts (gift_id, star_count) VALUES ($1, $2) ON CONFLICT DO NOTHING', [(g.id, g.star_count) for g in gifts])
@@ -45,7 +46,7 @@ async def set_user_balance(pool, user_id, new_balance):
 
 # --- Основная логика ---
 
-async def notify_new_gifts_broadcast(bot_client: Client, new_gifts: List['kurigram.types.Gift'], db_pool): # <--- ИЗМЕНЕНИЕ
+async def notify_new_gifts_broadcast(bot_client: Client, new_gifts: List[Gift], db_pool):
     if not new_gifts: return
     text_parts = ["new gifts:"]
     for gift in sorted(new_gifts, key=lambda g: g.star_count, reverse=True):
@@ -63,7 +64,7 @@ async def notify_new_gifts_broadcast(bot_client: Client, new_gifts: List['kurigr
             print(f"Не удалось отправить уведомление в чат {chat_id}: {e}")
     print("Рассылка завершена.")
 
-async def create_and_execute_greedy_purchase_plan(user_client: Client, user_id: int, user_balance: int, new_gifts: List['kurigram.types.Gift'], db_pool): # <--- ИЗМЕНЕНИЕ
+async def create_and_execute_greedy_purchase_plan(user_client: Client, user_id: int, user_balance: int, new_gifts: List[Gift], db_pool):
     if not new_gifts or user_balance <= 0: return
     gifts_by_priority = sorted(new_gifts, key=lambda g: g.star_count, reverse=True)
     purchase_plan: Dict[int, int] = {g.id: 0 for g in gifts_by_priority}
@@ -103,14 +104,13 @@ async def create_and_execute_greedy_purchase_plan(user_client: Client, user_id: 
     print(f"Все покупки для пользователя {user_id} завершены. Новый баланс в БД: {final_balance}")
 
 async def monitor_gifts_loop(user_client: Client, bot_client: Client, db_pool):
-    """Основной цикл мониторинга, теперь это отдельная корутина."""
     last_log_time = time.time()
     gift_found_this_hour = False
     while True:
         try:
             current_gifts = await user_client.get_available_gifts()
             known_ids = await get_known_gift_ids(db_pool)
-            new_gifts = [g for g in current_gifts if g and g.id not in known_ids and g.star_count > 0] # Добавил проверку g
+            new_gifts = [g for g in current_gifts if g and g.id not in known_ids and g.star_count > 0]
             if new_gifts:
                 gift_found_this_hour = True
                 await add_new_gifts_to_db(db_pool, new_gifts)
@@ -132,19 +132,14 @@ async def monitor_gifts_loop(user_client: Client, bot_client: Client, db_pool):
             await asyncio.sleep(15)
 
 async def main_worker():
-    """Главная функция, которая запускает все компоненты воркера."""
     if not all([API_ID, API_HASH, SESSION_NAME, BOT_TOKEN, DATABASE_URL]):
         print("Ошибка: Не все переменные окружения установлены! Воркер не может запуститься.")
         return
-
     print("Запуск фонового воркера...")
     db_pool = await asyncpg.create_pool(dsn=DATABASE_URL)
     await init_db(db_pool)
-    
     user_client = Client(SESSION_NAME, api_id=API_ID, api_hash=API_HASH)
     bot_client = Client("bot_sender_instance", bot_token=BOT_TOKEN, api_id=API_ID, api_hash=API_HASH)
-
-    # Используем asyncio.gather для корректного параллельного запуска
     async with user_client, bot_client:
         monitor_task = monitor_gifts_loop(user_client, bot_client, db_pool)
         await asyncio.gather(monitor_task)
