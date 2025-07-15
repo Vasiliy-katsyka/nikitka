@@ -1,42 +1,33 @@
 # ==========================================
-#  bot_server.py
-#  Веб-сервис для Render.com
-#  Отвечает за обработку команд бота через вебхуки.
+#  bot_server.py (v2 - Kurigram fix)
 # ==========================================
 
 import asyncio
 import asyncpg
 import os
 import uvloop
-from pyrogram import Client, filters, idle, types
+from kurigram import Client, filters, types # <--- ИЗМЕНЕНИЕ
 from aiohttp import web
 
-# --- Конфигурация из переменных окружения ---
+# --- Конфигурация (без изменений) ---
 API_ID = int(os.getenv("API_ID", 0))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
 ADMIN_USER_ID = int(os.getenv("ADMIN_USER_ID", 0))
-
-# Render автоматически предоставляет эти переменные
 SERVER_URL = os.getenv("RENDER_EXTERNAL_URL") 
 PORT = int(os.getenv("PORT", 8080))
-
-# Используем токен как секретный путь для вебхука
 WEBHOOK_PATH = f"/{BOT_TOKEN}"
 WEBHOOK_URL = f"{SERVER_URL}{WEBHOOK_PATH}"
 
-# --- Объекты Pyrogram и веб-сервера ---
+# --- Объекты (без изменений) ---
 bot = Client("gift_bot_instance", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-user_conversations = {} # Словарь для отслеживания состояний диалога
+user_conversations = {}
 
-# --- Функции для работы с базой данных (дублируются для независимой работы) ---
+# --- Функции для работы с БД (без изменений) ---
 async def set_user_balance(pool, user_id, new_balance):
     async with pool.acquire() as conn:
-        await conn.execute(
-            "INSERT INTO telegram_users (user_id, star_balance) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET star_balance = $2",
-            user_id, new_balance
-        )
+        await conn.execute("INSERT INTO telegram_users (user_id, star_balance) VALUES ($1, $2) ON CONFLICT (user_id) DO UPDATE SET star_balance = $2", user_id, new_balance)
 
 async def add_new_user(pool, user_id):
     async with pool.acquire() as conn:
@@ -46,7 +37,7 @@ async def get_all_users(pool):
     async with pool.acquire() as conn:
         return await conn.fetch('SELECT user_id, star_balance FROM telegram_users')
 
-# --- Обработчики команд бота ---
+# --- Обработчики команд бота (без изменений, кроме импорта types) ---
 
 @bot.on_message(filters.command("start"))
 async def start_handler(_, message: types.Message):
@@ -88,7 +79,6 @@ async def cq_select_user_for_balance(_, cq: types.CallbackQuery):
 async def conversation_handler(client, message: types.Message):
     state = user_conversations.pop(message.from_user.id, None)
     if not state: return
-
     if state == "awaiting_new_user_id":
         try:
             new_user_id = int(message.text)
@@ -107,51 +97,42 @@ async def conversation_handler(client, message: types.Message):
             await message.reply("Неверный баланс. Пожалуйста, отправьте число.")
             user_conversations[message.from_user.id] = state
 
-# --- Логика веб-сервера ---
+# --- Логика веб-сервера (без изменений) ---
 
 async def on_startup(app):
-    """Действия при старте веб-сервера."""
     if not all([BOT_TOKEN, SERVER_URL]):
         print("Ошибка: BOT_TOKEN или SERVER_URL не установлены. Веб-сервис не может запуститься.")
         return
-        
     print("Запуск веб-сервиса бота...")
     app['db_pool'] = await asyncpg.create_pool(dsn=DATABASE_URL)
     bot.db_pool = app['db_pool']
-    
     await bot.start()
     try:
-        await bot.set_webhook(url=WEBHOOK_URL)
+        await bot.set_webhook(url=WEBHOOK_URL, allowed_updates=[]) # allowed_updates=[] - чтобы не получать лишние апдейты
         print(f"Вебхук успешно установлен по адресу: {WEBHOOK_URL}")
     except Exception as e:
         print(f"Ошибка установки вебхука: {e}")
 
 async def on_shutdown(app):
-    """Действия при остановке веб-сервера."""
     print("Остановка веб-сервиса бота...")
+    if bot.is_initialized:
+        await bot.stop()
     await app['db_pool'].close()
-    await bot.stop()
 
 async def webhook_handler(request):
-    """Обрабатывает входящие запросы от Telegram."""
     try:
         update_json = await request.json()
-        await bot.feed_raw_update(update_json)
+        await bot.feed_update(update_json)
     except Exception as e:
         print(f"Ошибка обработки вебхука: {e}")
     return web.Response(status=200)
 
 async def main_bot_server():
-    """Главная функция для запуска веб-сервиса."""
-    # Устанавливаем более быстрый цикл событий
     uvloop.install()
-
     app = web.Application()
     app.router.add_post(WEBHOOK_PATH, webhook_handler)
     app.on_startup.append(on_startup)
     app.on_shutdown.append(on_shutdown)
-
-    # Запускаем веб-сервер
     web.run_app(app, host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
