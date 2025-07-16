@@ -4,3 +4,4 @@ asyncpg
 aiohttp
 uvloop
 python-dotenv
+pyTelegramBotAPI
